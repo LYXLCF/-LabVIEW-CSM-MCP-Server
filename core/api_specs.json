@@ -1,0 +1,84 @@
+{
+  "read_states": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API with lvcsm Support\\Read CSM States By CSM-VI.vi",
+    "name": "CSM-Helper API with lvcsm Support.lvlib:Read CSM States By CSM-VI.vi",
+    "terminals": [
+      {
+        "terminal_name": "CSM VI",
+        "type": "str",
+        "default_value": ""
+      },
+      {
+        "terminal_name": "Array",
+        "type": "tuple",
+        "default_value": "List(len=0)"
+      }
+    ]
+  },
+  "read_api": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API with lvcsm Support\\Read CSM API By CSM-VI.vi",
+    "name": "CSM-Helper API with lvcsm Support.lvlib:Read CSM API By CSM-VI.vi",
+    "terminals": [
+      {
+        "terminal_name": "CSM VI",
+        "type": "str",
+        "default_value": ""
+      },
+      {
+        "terminal_name": "Array",
+        "type": "tuple",
+        "default_value": "List(len=0)"
+      }
+    ]
+  },
+  "read_status": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API with lvcsm Support\\Read CSM Status By CSM-VI.vi",
+    "name": "CSM-Helper API with lvcsm Support.lvlib:Read CSM Status By CSM-VI.vi",
+    "terminals": [
+      {
+        "terminal_name": "CSM VI",
+        "type": "str",
+        "default_value": ""
+      }
+    ]
+  },
+  "create_from_vi": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API\\Create From VI Reference.vi",
+    "name": "CSM-Helper.lvclass:Create From VI Reference.vi",
+    "terminals": [
+      {
+        "terminal_name": "error out",
+        "type": "tuple",
+        "default_value": "List(len=3)"
+      }
+    ]
+  },
+  "add_state_frame": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API\\Add State Frame.vi",
+    "name": "CSM-Helper.lvclass:Add State Frame.vi",
+    "terminals": [
+      {
+        "terminal_name": "error out",
+        "type": "tuple",
+        "default_value": "List(len=3)"
+      }
+    ]
+  },
+  "destroy": {
+    "exists": true,
+    "path": "C:\\Program Files (x86)\\National Instruments\\LabVIEW 2025\\user.lib\\_NEVSTOP\\Communicable State Machine(CSM)\\_csmHelper\\API\\Destroy.vi",
+    "name": "CSM-Helper.lvclass:Destroy.vi",
+    "terminals": [
+      {
+        "terminal_name": "error out",
+        "type": "tuple",
+        "default_value": "List(len=3)"
+      }
+    ]
+  }
+}

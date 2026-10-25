@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary backups & scratch scripts
+backups/*.bak
+scratch/
+
+# Environments & OS files
+.venv/
+env/
+venv/
+.DS_Store
+Thumbs.db
+*.log
