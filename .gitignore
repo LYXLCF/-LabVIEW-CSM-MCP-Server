@@ -10,6 +10,10 @@ dist/
 backups/*.bak
 scratch/
 
+# Temporary debug dumps
+tests/fp_dump.*
+tests/*.dump
+
 # Environments & OS files
 .venv/
 env/

@@ -1,9 +1,0 @@
-CSM-Helper API with lvcsm Support.lvlib:Read CSM States By
-CSM-VI.vi:
-VI Path: C:\Program Files (x86)\National Instruments\LabVIEW
-2025\user.lib\_NEVSTOP\Communicable State
-Machine(CSM)\_csmHelper\API with lvcsm Support\Read CSM
-States By CSM-VI.vi
-Last Modified: 2026/7/30  11:27
-Version: 73
-
