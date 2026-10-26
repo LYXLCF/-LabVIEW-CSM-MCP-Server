@@ -143,9 +143,13 @@
 * 操作系统：Windows 10 / 11
 * LabVIEW：2020 及以上版本（支持 32 位或 64 位，实测 LabVIEW 2025 完美支持）
 * Python：3.10 及以上（**推荐 64 位 Python 3.12**，得益于 Windows COM RPC，可无缝调度 32 位 LabVIEW）
-* 安装 Python 核心依赖：
+* 安装 Python 依赖 (支持两种标准方式)：
   ```bash
-  pip install pywin32 mcp
+  # 方式 A：标准生产依赖一键安装
+  pip install -r requirements.txt
+
+  # 方式 B：本地开发包安装 (推荐，可直接激活全局 csm-mcp 命令行工具)
+  pip install -e .
   ```
 
 ### 第二步：配置 LabVIEW VI 服务器权限 (仅需配置一次)
@@ -165,17 +169,14 @@
 2. 点击 **+ Add New MCP Server**，填写：
    - **Name**: `labview-csm-mcp`
    - **Type**: `command`
-   - **Command**: `python C:\path\to\csm_mcp\server.py --stdio`
-3. 或者直接在项目根目录创建 `.cursor/mcp.json`：
+   - **Command**: `csm-mcp --stdio` *(若使用 pip install -e . 安装)* 或 `python C:\path\to\csm_mcp\server.py --stdio`
+3. 或者直接在项目根目录创建 `.cursor/mcp.json` (推荐极简全局命令)：
    ```json
    {
      "mcpServers": {
        "labview-csm-mcp": {
-         "command": "python",
-         "args": [
-           "C:\Users\ASUS\Desktop\CSM\csm_mcp\server.py",
-           "--stdio"
-         ]
+         "command": "csm-mcp",
+         "args": ["--stdio"]
        }
      }
    }
@@ -184,16 +185,13 @@
 
 #### 方案 B：在 Claude Desktop 中配置
 1. 打开配置文件 `%APPDATA%\Claude\claude_desktop_config.json`；
-2. 加入以下内容：
+2. 加入以下内容 (推荐极简全局指令，彻底免除绝对路径配置痛点)：
    ```json
    {
      "mcpServers": {
        "labview-csm-mcp": {
-         "command": "python",
-         "args": [
-           "C:\Users\ASUS\Desktop\CSM\csm_mcp\server.py",
-           "--stdio"
-         ]
+         "command": "csm-mcp",
+         "args": ["--stdio"]
        }
      }
    }
@@ -202,18 +200,37 @@
 
 ---
 
-### 第四步：终端独立自检（无需打开客户端即可测试）
-在终端中执行以下命令，测试各组件通信是否正常：
+### 第四步：终端一键全栈体检 (csm doctor 诊断中台)
+开箱后或遇到任何连接问题时，只需在终端敲入一句体检命令，即可对 **Python 环境、依赖、COM 句柄、8 大母版、Helper VI、跳板及工作区写权限** 开展 9 项全栈体检：
 ```bash
-cd csm_mcp
-
-# 1. 运行服务自检
-python server.py
-
-# 2. 运行自动化测试套件
-python tests/test_tools_layer.py
+# 运行全自动诊断自检 (支持以下任意写法)
+csm-mcp --doctor
+# 或 python server.py --doctor
 ```
-若控制台输出 `7 大核心 Tools 就绪` 且断言全部通过，即代表所有底层环境无懈可击！
+终端将输出直观的结构化体检报告：
+```text
+=================================================================
+          [CSM Doctor] LabVIEW-CSM-MCP 全栈环境自检报告
+=================================================================
+>> [Python 运行环境]
+  [PASS] Python 版本与位数: Python 3.12 (64-bit)
+>> [Python 核心依赖]
+  [PASS] pywin32 (COM 引擎) / 官方 MCP SDK (mcp 2.x) / pydantic (类型校验)
+>> [LabVIEW COM 连通性]
+  [PASS] LabVIEW.Application 自动化句柄: 已连接活动实例 LabVIEW.exe
+>> [官方出厂母版资源]
+  [PASS] CSM 8 大母版存在性: 8/8 官方母版全部就绪
+>> [官方 Helper API]
+  [PASS] Read CSM States/API Helper VI: 官方 API with lvcsm Support 完整就绪
+>> [Agent 核心跳板]
+  [PASS] csm_agent_bridge_add_state.vi: 跳板 VI 就绪
+>> [文件系统权限]
+  [PASS] 备份与工作区安全写入: 本地安全写权限正常
+-----------------------------------------------------------------
+[OK] 全部 9 项环境检测 100% 通过，系统处于最佳健康就绪状态！
+=================================================================
+```
+> 💡 若有任何项目未通过，Doctor 会自动输出针对性的文字诊断与排错建议（如指导开启 ActiveX、启动 LabVIEW 等），彻底消灭排错门槛！
 
 ---
 
@@ -302,7 +319,10 @@ python tests/test_tools_layer.py
 1. **双层平坦化跳板**：LabVIEW COM 接口天然无法跨进程传递 LVOOP 私有类对象。我们研制了极简本地 Bridge VI，将外部输入降维为扁平字符串/路径，内部消化面向对象句柄；
 2. **LocalServer32 跨位宽穿透**：Windows DCOM 列集封送（Marshalling）底层自动接管了 64 位 Python 与 32 位 LabVIEW 之间的内存转换，彻底打破了传统进程内 DLL 无法跨位宽调用的技术壁垒；
 3. **隧道自动缝合 (Connect Paired Tunnels)**：在 Bridge VI 中链式集成穿线节点，切削新增分支的同时秒级缝合所有移位寄存器，彻底解决 VI 断线难题；
-4. **前面板原生自文档化 (Auto-Documentation)**：在代码切削闭环的同时，自动为 VI Description 烧录结构化 Markdown 任务卡，消灭“文档债务”。
+4. **前面板原生自文档化 (Auto-Documentation)**：在代码切削闭环的同时，自动为 VI Description 烧录结构化 Markdown 任务卡，消灭“文档债务”；
+5. **四级自适应环境寻址与母版资产评分**：研制 `LabVIEWPathResolver`，按 `环境变量 (LABVIEW_DIR) ➔ COM 运行态原生自省 ➔ 注册表全树扫描与资产打分 ➔ 多盘符容灾` 4 级流水线自动寻址，彻底终结路径写死难题。自动遍历 32/64 位注册表树，优先匹配母版最齐全（满分 8/8）的安装目录；
+   > ⚠️ **兼容性实测范围声明**：理论上该探测机制通吃 LabVIEW 2020~2026 全系版本与任意安装盘符，但**目前我们团队仅在 `LabVIEW 2025 (32-bit & 64-bit)` 环境下完成了全量物理切削与端到端实测验证**。其他历史版本（如 2020、2021、2023、2024）或定制安装路径未经全量实测验证，请根据现场实际环境自行评估判断与适配；
+6. **物理切削事务强一致性与防脱节保护**：移除任何静默吞噬异常行为，实行物理级强一致性守卫。只有在 COM 底层物理切削实质成功后，才允许向 `added_states` 登记并持久化更新 `.lvcsm` 元数据与任务卡。若切削失败如实捕获并返回 `failed_states`，彻底杜绝“框图实际没加、元数据却谎报已加”的拓扑分叉隐患。
 
 ---
 
@@ -323,6 +343,18 @@ python tests/test_tools_layer.py
 
 ### Q4: 如何在 LabVIEW 中查看 AI 自动生成的 API 步骤任务卡？
 * **操作方式**：打开生成的 `.vi`，直接在键盘上按下 **`Ctrl + H`** 唤出即时帮助窗口；或在 VI 前面板右键右上角 VI 图标 ➔ 选择 **VI 属性 (VI Properties)** ➔ 下拉框切换至 **说明信息 (Documentation)**，即可看到完整的格式化 API 说明与任务卡！
+
+---
+
+## 🤝 社区共建、Bug 反馈与贡献指南
+
+工业测控现场软硬件生态极其多样（涵盖不同 Windows 系统版本、LabVIEW 位数、各版本 VIPM 包依赖及各厂商驱动）。个人的实测覆盖面始终是有限的。
+
+如果您在其他 LabVIEW 版本（如 2020、2021、2023、2024）或特定工控硬件环境下遇到问题，或发现任何未适配的边界场景：
+
+1. **提交 Issue 诊断工单**：欢迎在 [GitHub Issues](https://github.com/LYXLCF/-LabVIEW-CSM-MCP-Server/issues) 或 [Gitee Issues](https://gitee.com/SALYX1314/lab-view_-csm_-mcp/issues) 提交工单，并附上运行 `csm-mcp --doctor` 产生的自检诊断报告；
+2. **欢迎发起 Pull Request (PR)**：如果您在本地成功适配了其他 LabVIEW 版本或修复了兼容性 Bug，非常欢迎直接发起 PR，您的贡献将会让更多工业测控与 LabVIEW 开发者受益！
+3. **技术交流与场景讨论**：可在仓库的 **Discussions** 或评论区留下您的使用场景、硬件型号（如各种 CAN 卡、串口仪器等）与改进建议。
 
 ---
 
