@@ -11,17 +11,14 @@ from project_evolution_manager import ProjectEvolutionManager
 from csm_naming_validator import CSMMonitorNamingValidator
 from csm_argument_codec import CSMArgumentCodec
 
-# 官方出厂 5 大标准母版字典
-OFFICIAL_CSM_TEMPLATES = {
-    "worker": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\user.lib\_NEVSTOP\Communicable State Machine(CSM)\CSM Module Template.vi",
-    "ui": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\user.lib\_NEVSTOP\Communicable State Machine(CSM)\CSM User Interface(UI) Module Template.vi",
-    "worker_tiny": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\templates\Communicable State Machine(CSM)\CSM Module Template - Tiny.vi",
-    "ui_tiny": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\templates\Communicable State Machine(CSM)\CSM User Interface(UI) Module Template - Tiny.vi",
-    "worker_config": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\templates\Communicable State Machine(CSM)\CSM Module Template(+Configuration).vi",
-    "ui_config": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\templates\Communicable State Machine(CSM)\CSM User Interface(UI) Module Template(+Configuration).vi",
-    "dqmh": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\templates\Communicable State Machine(CSM)\CSM DQMH-Style Template.vi",
-    "reuse": r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\examples\NEVSTOP\Communicable State Machine(CSM)\1. Create a reuse Module\CSM Reuse Module.vi"
-}
+# 引入自适应路径引擎
+try:
+    from core.csm_path_resolver import LabVIEWPathResolver
+except ImportError:
+    from csm_path_resolver import LabVIEWPathResolver
+
+# 官方出厂 8 大标准母版字典 (全系版本与盘符动态自适应)
+OFFICIAL_CSM_TEMPLATES = LabVIEWPathResolver.get_template_paths()
 
 class CSMTools:
     """
@@ -333,6 +330,7 @@ class CSMTools:
             current_states = self._get_existing_states(vi_path)
             added_states = []
             skipped_states = []
+            failed_states = {}
             generated_task_cards = {}
 
             for s in states:
@@ -342,23 +340,23 @@ class CSMTools:
                     skipped_states.append(s_clean)
                     continue
 
-                # 生成该分支对应的开发者任务卡指南文本
-                card_info = task_cards.get(s_clean) if task_cards else None
-                card_script = self.evolution_mgr.build_branch_task_card_script(s_clean, card_info)
-                generated_task_cards[s_clean] = card_script
-
-                # 驱动底层中台注入物理分支
+                # 驱动底层中台注入物理分支 (绝不生吞异常，保证真机与元数据一致性)
                 try:
                     self.bridge.add_csm_state(vi_path, s_clean)
-                except Exception:
-                    pass
-                current_states.add(s_clean)
-                added_states.append(s_clean)
+                    # 仅在真机物理切削成功后，才计入已生效状态集！
+                    current_states.add(s_clean)
+                    added_states.append(s_clean)
+                    # 仅为实际成功的状态生成任务卡
+                    card_info = task_cards.get(s_clean) if task_cards else None
+                    card_script = self.evolution_mgr.build_branch_task_card_script(s_clean, card_info)
+                    generated_task_cards[s_clean] = card_script
+                except Exception as ex:
+                    failed_states[s_clean] = str(ex)
 
-            # 同步更新项目关联的 .lvcsm 元数据与 VI Description
+            # 同步更新项目关联的 .lvcsm 元数据与 VI Description (仅同步真实成功切削的状态！)
             lvcsm_path = self._find_project_lvcsm(os.path.dirname(vi_path))
             lvcsm_sync_result = None
-            if lvcsm_path:
+            if lvcsm_path and added_states:
                 all_current_states = list(current_states)
                 api_states = [st for st in all_current_states if st.startswith("API:")]
                 lvcsm_sync_result = self.evolution_mgr.sync_lvcsm_metadata(
@@ -369,30 +367,37 @@ class CSMTools:
                     task_cards=task_cards
                 )
 
-            # 同步更新 VI Description 注入全套中文任务卡说明
-            try:
-                app = self.bridge.get_lv_app()
-                vi_ref = app.GetVIReference(vi_path)
-                doc_header = f"### {os.path.basename(vi_path)} - CSM 控制器开发指南\n\n"
-                doc_cards = "\n\n".join([f"#### {st}\n```text\n{script}\n```" for st, script in generated_task_cards.items()])
-                vi_ref.Description = doc_header + doc_cards
-                vi_ref.SaveInstrument()
-                vi_ref = None
-            except Exception:
-                pass
+            # 同步更新 VI Description 注入全套中文任务卡说明 (仅针对成功分支)
+            if generated_task_cards:
+                try:
+                    app = self.bridge.get_lv_app()
+                    vi_ref = app.GetVIReference(vi_path)
+                    doc_header = f"### {os.path.basename(vi_path)} - CSM 控制器开发指南\n\n"
+                    doc_cards = "\n\n".join([f"#### {st}\n```text\n{script}\n```" for st, script in generated_task_cards.items()])
+                    vi_ref.Description = doc_header + doc_cards
+                    vi_ref.SaveInstrument()
+                    vi_ref = None
+                except Exception:
+                    pass
+
+            # 判断整体执行结果
+            is_all_failed = len(states) > 0 and len(added_states) == 0 and len(skipped_states) == 0 and len(failed_states) > 0
+            has_partial_failures = len(failed_states) > 0
 
             return {
-                "success": True,
+                "success": not is_all_failed,
                 "vi_path": vi_path,
                 "idempotency_guard_active": True,
-                "all_requested_already_existed": len(added_states) == 0 and len(skipped_states) > 0,
+                "all_requested_already_existed": len(added_states) == 0 and len(skipped_states) > 0 and len(failed_states) == 0,
                 "total_requested": len(states),
                 "added_states": added_states,
                 "skipped_states": skipped_states,
+                "failed_states": failed_states,
+                "has_partial_failures": has_partial_failures,
                 "task_cards": generated_task_cards,
                 "lvcsm_synced": lvcsm_sync_result is not None,
                 "lvcsm_path": lvcsm_path,
-                "sop_guidance": "已为每个新增分支自动挂载【分支任务卡】开发指南，包含解包句柄、提取入参、推荐子VI、黄色错误链连通与数据回存五步指引。"
+                "sop_guidance": "已为成功切削的分支自动挂载【分支任务卡】开发指南；若有失败分支已如实报告，彻底杜绝元数据分叉谎报。"
             }
 
         except TargetVIInUseError as e:

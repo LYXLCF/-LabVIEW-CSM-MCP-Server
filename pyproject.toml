@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labview-csm-mcp"
+version = "1.1.0"
+description = "Model Context Protocol (MCP) Server for LabVIEW CSM (Continuous State Machine) Architecture"
+readme = "README.md"
+authors = [
+    { name = "CSM Industrial Agent Team" }
+]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["labview", "csm", "mcp", "model-context-protocol", "industrial-automation"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Manufacturing",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator"
+]
+dependencies = [
+    "mcp>=2.3.0",
+    "pywin32>=312",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+csm-mcp = "server:main"
+
+[tool.setuptools]
+py-modules = ["server"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "tools*", "skills*", "agent_vi*"]

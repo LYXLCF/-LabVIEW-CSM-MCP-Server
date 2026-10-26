@@ -3,6 +3,10 @@ import shutil
 import time
 from datetime import datetime
 import win32com.client
+try:
+    from core.csm_path_resolver import LabVIEWPathResolver
+except ImportError:
+    from csm_path_resolver import LabVIEWPathResolver
 
 class TargetVIInUseError(Exception):
     """当目标 VI 在 LabVIEW 前台正处于打开编辑状态时抛出，防止脏读脏写"""
@@ -35,9 +39,15 @@ class CSMBridge:
         os.makedirs(self.backup_dir, exist_ok=True)
 
         # 官方特工平坦化 API 基础路径
-        self.official_helper_dir = r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\user.lib\_NEVSTOP\Communicable State Machine(CSM)\_csmHelper\API with lvcsm Support"
-        self.read_states_vi_path = os.path.join(self.official_helper_dir, "Read CSM States By CSM-VI.vi")
-        self.read_api_vi_path = os.path.join(self.official_helper_dir, "Read CSM API By CSM-VI.vi")
+        # 官方特工平坦化 API 基础路径 (自适应全系版本与盘符定位)
+
+        helpers = LabVIEWPathResolver.get_helper_paths()
+
+        self.official_helper_dir = helpers["helper_dir"]
+
+        self.read_states_vi_path = helpers["read_states"]
+
+        self.read_api_vi_path = helpers["read_api"]
 
         # 本地跳板 VI 路径（用于在 LV 内部消化 Class 类调用以加分支）
         self.agent_bridge_add_state_vi_path = os.path.abspath(
