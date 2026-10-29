@@ -10,6 +10,10 @@ from csm_syntax_analyzer import CSMSyntaxAnalyzer
 from project_evolution_manager import ProjectEvolutionManager
 from csm_naming_validator import CSMMonitorNamingValidator
 from csm_argument_codec import CSMArgumentCodec
+try:
+    from core.csm_doc_generator import CSMModuleDocGenerator
+except ImportError:
+    from csm_doc_generator import CSMModuleDocGenerator
 
 # 引入自适应路径引擎
 try:
@@ -536,6 +540,114 @@ class CSMTools:
             return self._format_error("SecurityViolationError", str(e), "触发 P0 级最高红线！严禁修改 C 盘系统文件。")
         except Exception as e:
             return self._format_error("ScriptInjectionError", f"注入脚本文本失败: {e}", "请检查目标 VI 路径与写入权限。")
+
+
+    # =========================================================================
+    # Tool 8: csm_generate_module_doc (逆向工程 - 依据官方规范自动输出 ModuleName.md)
+    # =========================================================================
+    def csm_generate_module_doc(
+        self,
+        vi_path: str = "",
+        module_name: str = None,
+        template_only: bool = False,
+        save_to_disk: bool = True
+    ) -> dict:
+        """
+        依据 NEVSTOP CSM 官方 csm-module-skill 规范，为目标 CSM VI 自动逆向提取状态并生成标准接口说明书。
+        1. 自动调用 csm_inspect_vi 透视全部物理状态与 API；
+        2. 自动从前面板 VI.Description 提取已烧录的 Task Card 任务卡参数；
+        3. 按照 11 大必备章节（元数据、依赖项、三元组格式 API、状态广播、Attribute属性、配置、使用示例、Mermaid 状态图）渲染 Markdown；
+        4. 若 save_to_disk 为 True，自动在 VI 同级目录下持久化写入 ModuleName.md。
+        """
+        try:
+            doc_gen = CSMModuleDocGenerator()
+
+            # 快速通道：若开启 template_only，直接基于官方 module-template.md 吐出标准脚手架样板
+            if template_only or not vi_path:
+                runtime_name = module_name if module_name else "MyModule"
+                tmpl_content = doc_gen.get_starter_template(runtime_name)
+                saved_file_path = None
+                if save_to_disk and vi_path:
+                    target_dir = os.path.dirname(os.path.abspath(vi_path)) if os.path.isdir(vi_path) else os.path.dirname(vi_path)
+                    target_md = os.path.join(target_dir, f"{runtime_name}.md")
+                    with open(target_md, "w", encoding="utf-8") as f:
+                        f.write(tmpl_content)
+                    saved_file_path = target_md
+
+                return {
+                    "success": True,
+                    "module_name": runtime_name,
+                    "template_mode": True,
+                    "saved_to_disk": saved_file_path is not None,
+                    "markdown_file_path": saved_file_path,
+                    "markdown_content": tmpl_content,
+                    "compliance_standard": "NEVSTOP CSM-Wiki module-template.md 官方标准脚手架",
+                    "summary": f"成功基于官方 module-template.md 导出标准模块文档样板。" + (f"已保存至: {saved_file_path}" if saved_file_path else "")
+                }
+
+            vi_path = os.path.abspath(vi_path)
+            if not os.path.exists(vi_path):
+                return self._format_error("FileNotFoundError", f"目标 VI 文件不存在: {vi_path}", "请核对 VI 物理绝对路径。")
+
+            base_name = os.path.splitext(os.path.basename(vi_path))[0]
+            runtime_name = module_name if module_name else base_name
+
+            # 1. 透视物理状态与 API
+            inspect_res = self.csm_inspect_vi(vi_path)
+            if not inspect_res.get("success"):
+                return inspect_res
+
+            states = inspect_res.get("states", [])
+            api_states = inspect_res.get("api_states", [])
+
+            # 2. 读取前面板 VI Description 获取已有任务卡
+            task_cards = {}
+            try:
+                app = self.bridge.get_lv_app()
+                vi_ref = app.GetVIReference(vi_path)
+                desc = vi_ref.Description or ""
+                vi_ref = None
+                card_matches = re.findall(r'####\s+(API:[^\n]+)\s+```text\s+([\s\S]*?)```', desc)
+                for st_name, script_body in card_matches:
+                    task_cards[st_name.strip()] = script_body.strip()
+            except Exception:
+                pass
+
+            # 3. 驱动生成器渲染 Markdown
+            doc_gen = CSMModuleDocGenerator()
+            md_content = doc_gen.generate_markdown(
+                vi_path=vi_path,
+                module_name=runtime_name,
+                states=states,
+                api_states=api_states,
+                task_cards=task_cards
+            )
+
+            # 4. 判断是否落盘
+            saved_file_path = None
+            if save_to_disk:
+                target_md = os.path.join(os.path.dirname(vi_path), f"{base_name}.md")
+                with open(target_md, "w", encoding="utf-8") as f:
+                    f.write(md_content)
+                saved_file_path = target_md
+
+            return {
+                "success": True,
+                "vi_path": vi_path,
+                "module_name": runtime_name,
+                "total_apis": len(api_states),
+                "api_states": api_states,
+                "saved_to_disk": save_to_disk,
+                "markdown_file_path": saved_file_path,
+                "markdown_content": md_content,
+                "compliance_standard": "NEVSTOP CSM-Wiki csm-module-skill 11大标准章节",
+                "summary": f"成功为 {base_name}.vi 逆向生成正统 CSM 接口文档。" + (f"已保存至: {saved_file_path}" if saved_file_path else "")
+            }
+
+        except PermissionError as e:
+            return self._format_error("SecurityViolationError", str(e), "触发 P0 级最高红线！严禁修改 C 盘系统库。")
+        except Exception as e:
+            return self._format_error("DocGenerationError", f"生成 CSM 模块文档失败: {e}", "请检查目标 VI 路径与 COM 连通性。")
 
 if __name__ == "__main__":
     tools = CSMTools()

@@ -7,7 +7,7 @@
    - 握手完成通知 (notifications/initialized)
    - 探活心跳 (ping)
    - 工具列表与参数强类型 Schema 自动派发
-3. 暴露 7 大核心业务原语 Tool
+3. 暴露 8 大核心业务原语 Tool (含 csm_generate_module_doc)
 4. 原生兼容 Claude Desktop, Cursor, Goose, VS Code 等所有标准 MCP 客户端！
 """
 
@@ -27,7 +27,7 @@ from csm_doctor import CSMDoctor
 from csm_tools import CSMTools
 
 # 版本常量定义
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # 实例化官方 MCP 服务与业务工具中台
 mcp = MCPServer("labview-csm-mcp")
@@ -152,6 +152,68 @@ def csm_set_state_script(vi_path: str, state_name: str, script_text: str) -> str
     return json.dumps(res, ensure_ascii=False, indent=2)
 
 # =========================================================================
+# Tool 8: csm_generate_module_doc (逆向工程与正向样板 - 依据 csm-module-skill 自动输出标准文档)
+# =========================================================================
+@mcp.tool(
+    name="csm_generate_module_doc",
+    description="【自文档化】依据 NEVSTOP CSM-Wiki 官方 csm-module-skill 规范，为目标 CSM VI 自动逆向提取全部 API 状态并生成 11 大标准章节的接口说明书 (ModuleName.md)；亦可导出官方标准空白样板。"
+)
+def csm_generate_module_doc(
+    vi_path: str = "",
+    module_name: str = "",
+    template_only: bool = False,
+    save_to_disk: bool = True
+) -> str:
+    """
+    Args:
+        vi_path: 目标 CSM .vi 文件的绝对路径 (如 C:\\Path\\To\\Module.vi，template_only 时可不传)
+        module_name: 模块运行时规范名称 (如 'CAN_Controller', 可选，缺省自动使用 VI 名)
+        template_only: 是否仅导出官方原生的 module-template.md 空白脚手架样板 (默认为 False)
+        save_to_disk: 是否自动在 VI 同级目录下生成持久化 ModuleName.md 文件 (默认为 True)
+    """
+    res = tools_service.csm_generate_module_doc(
+        vi_path=vi_path,
+        module_name=module_name if module_name else None,
+        template_only=template_only,
+        save_to_disk=save_to_disk
+    )
+    return json.dumps(res, ensure_ascii=False, indent=2)
+
+# =========================================================================
+# Resource 1: csm_module_doc_template (官方原生 module-template.md 静态资源)
+# =========================================================================
+@mcp.resource(
+    "csm://templates/module-doc",
+    name="CSM 官方标准模块文档模板 (module-template.md)",
+    description="NEVSTOP CSM-Wiki 官方推荐的 11 大标准章节纯净 Markdown 样板",
+    mime_type="text/markdown"
+)
+def get_csm_module_doc_template() -> str:
+    template_file = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "skills", "csm-module-doc-writer", "module-template.md")
+    )
+    if os.path.exists(template_file):
+        with open(template_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "# [模块名称] — CSM 模块接口文档\n\n## 功能简述\n\n[一句话描述模块的功能]\n"
+
+# =========================================================================
+# Prompt 1: csm_module_doc_prompt (官方 csm-module-skill AI 指导 Prompt)
+# =========================================================================
+@mcp.prompt(
+    name="csm_module_doc_prompt",
+    description="获取撰写正统 CSM 模块接口文档的官方规范、11 大章节模板及三元组参数标准。"
+)
+def csm_module_doc_prompt(module_name: str = "MyModule") -> str:
+    return f"""你是一位精通 LabVIEW CSM 状态机架构的资深系统架构师。
+请严格依据 NEVSTOP 官方 csm-module-skill 规范，为模块 '{module_name}' 编写或审阅接口文档：
+1. 文件名约定：必须命名为 '{module_name}.md'；
+2. 必备章节：功能简述、模块信息、依赖项(2列表格)、API 接口、状态广播(Status/Interrupt)、属性接口(Attribute)、配置说明、调用限制与注意事项、使用示例、Mermaid 模块交互图、备注；
+3. 参数格式规范：API 参数必须严格使用三元组格式：`[CSM参数类型]` — `[数据类型]`：[描述]；
+4. 属性接口规范：Attribute 直接使用 LabVIEW 原生数据类型 (如 String, DBL, Boolean)，绝不用 CSM 参数编解码；
+5. 使用示例：使用运行时模块名称 '{module_name}'，展示完整启动、调用与退出序列。"""
+
+# =========================================================================
 # 服务主执行入口 (支持 --stdio, --doctor, --version, doctor 命令)
 # =========================================================================
 def main():
@@ -178,7 +240,7 @@ def main():
             raise
     else:
         print(f"=== labview-csm-mcp v{__version__} (Official MCP SDK 2.x) 就绪 ===")
-        print("支持的 7 大原生 MCP Tools:")
+        print("支持的 8 大原生 MCP Tools:")
         print("  - csm_inspect_vi: 状态透视与运行态闲置体检")
         print("  - csm_create_module: 8大出厂母版克隆 + Auto 智能选型 + .lvproj 自动挂载点亮")
         print("  - csm_upsert_states: 双通道复合幂等守卫 + 自动穿线 + 真实切削检验")
@@ -186,6 +248,7 @@ def main():
         print("  - csm_format_argument: 官方 4.1~4.3 SAFESTR/ErrStr 参数转义防呆")
         print("  - csm_add_to_project: .lvproj XML 工程树原子挂载")
         print("  - csm_set_state_script: 方案 A 状态执行脚本链安全注入")
+        print("  - csm_generate_module_doc: 依据官方 csm-module-skill 逆向生成正统 ModuleName.md")
         print("\n常用命令指引:")
         print("  1. 环境自检排错:  csm-mcp --doctor  (或 csm-mcp doctor)")
         print("  2. 查看当前版本:  csm-mcp --version")

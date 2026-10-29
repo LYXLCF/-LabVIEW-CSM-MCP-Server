@@ -1,7 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 CSM Doctor 全方位环境自检与诊断中台
-涵盖 6 大核心自检维度：
+涵盖 7 大核心自检维度：
+1. Python 运行时与核心依赖 (mcp, pywin32, pydantic)
+2. Windows COM 句柄与 LabVIEW.Application 连通性
+3. 官方 CSM 运行时生态全栈透视 (VIPM 探针与版本号)
+4. NEVSTOP 官方 CSM 8 大母版存在性
+5. 官方平坦化 Helper VI 存在性
+6. CSM 跳板 VI 与 Agent 中台资源健康度
+7. 工作区与 .lvcsm 读写权限体检
 1. Python 运行时与核心依赖 (mcp, pywin32, pydantic)
 2. Windows COM 句柄与 LabVIEW.Application 连通性
 3. 当前运行态 LabVIEW 主程序版本、位数与进程状态
@@ -18,11 +25,58 @@ import os
 import sys
 import platform
 import json
+import glob
+import re
 from typing import Dict, Any, List
 
 class CSMDoctor:
     def __init__(self):
         self.results: List[Dict[str, Any]] = []
+
+    def _parse_ver_tuple(self, ver_str: str):
+        nums = re.findall(r'\d+', ver_str)
+        return tuple(int(n) for n in nums)
+
+    def _detect_csm_vipm_packages(self) -> Dict[str, str]:
+        """嗅探工控机上安装的 NEVSTOP 官方 CSM 核心组件与 VIPM 版本号"""
+        packages = {}
+        db_patterns = [
+            r'C:\ProgramData\JKI\VIPM\databases\*\package database info.pdi2',
+            r'C:\Users\*\AppData\Local\JKI\VIPM\databases\*\package database info.pdi2'
+        ]
+        pdi_files = []
+        for pat in db_patterns:
+            pdi_files.extend(glob.glob(pat))
+
+        for pdi_file in pdi_files:
+            try:
+                with open(pdi_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                matches = re.findall(r'(nevstop_[a-zA-Z0-9_]+)[=:\-]([0-9\.]+)', content, re.IGNORECASE)
+                for pkg, ver in matches:
+                    clean_ver = ver.rstrip('.')
+                    clean_pkg = pkg.lower()
+                    if len(clean_pkg) < 50:
+                        current_best = packages.get(clean_pkg)
+                        if not current_best or self._parse_ver_tuple(clean_ver) > self._parse_ver_tuple(current_best):
+                            packages[clean_pkg] = clean_ver
+            except Exception:
+                continue
+
+        if not packages:
+            cache_dir = r'C:\ProgramData\JKI\VIPM\cache'
+            if os.path.exists(cache_dir):
+                for f in os.listdir(cache_dir):
+                    if f.startswith('nevstop_') and f.endswith('.spec'):
+                        m = re.match(r'(nevstop_[a-zA-Z0-9_]+)-([0-9\.]+)\.spec', f, re.IGNORECASE)
+                        if m:
+                            pkg = m.group(1).lower()
+                            ver = m.group(2)
+                            current_best = packages.get(pkg)
+                            if not current_best or self._parse_ver_tuple(ver) > self._parse_ver_tuple(current_best):
+                                packages[pkg] = ver
+
+        return packages
 
     def _add_check(self, category: str, name: str, passed: bool, detail: str, suggestion: str = ""):
         self.results.append({
@@ -99,7 +153,41 @@ class CSMDoctor:
             )
 
         # -----------------------------------------------------------------
-        # 3. 官方 CSM 8 大母版存在性扫描
+        # 3. 官方 CSM 运行时生态全栈透视 (VIPM 探针)
+        # -----------------------------------------------------------------
+        csm_pkgs = self._detect_csm_vipm_packages()
+        core_ver = csm_pkgs.get("nevstop_lib_communicable_state_machine", "")
+        arg_ver = csm_pkgs.get("nevstop_lib_csm_api_string_arguments_support", "")
+        script_ver = csm_pkgs.get("nevstop_lib_csmscript_lite", "")
+        ini_ver = csm_pkgs.get("nevstop_lib_csm_ini_static_variable_support", "")
+
+        if core_ver:
+            detail_items = [f"核心框架: v{core_ver}"]
+            if arg_ver:
+                detail_items.append(f"参数库: v{arg_ver}")
+            if script_ver:
+                detail_items.append(f"CSMScript-Lite: v{script_ver}")
+            elif ini_ver:
+                detail_items.append(f"INI支持: v{ini_ver}")
+            self._add_check(
+                "官方 CSM 运行时生态",
+                "VIPM 官方包版本透视",
+                True,
+                " | ".join(detail_items)
+            )
+        else:
+            csm_userlib = r"C:\Program Files (x86)\National Instruments\LabVIEW 2025\user.lib\_NEVSTOP\Communicable State Machine(CSM)"
+            userlib_ok = os.path.exists(csm_userlib)
+            self._add_check(
+                "官方 CSM 运行时生态",
+                "VIPM 官方包版本透视",
+                userlib_ok,
+                "已就绪 (user.lib 物理部署)" if userlib_ok else "未在 VIPM 或 user.lib 中检测到官方 CSM 框架",
+                "" if userlib_ok else "请打开 VIPM 搜索安装 Communicable State Machine(CSM)"
+            )
+
+        # -----------------------------------------------------------------
+        # 4. 官方 CSM 8 大母版存在性扫描
         # -----------------------------------------------------------------
         from tools.csm_tools import OFFICIAL_CSM_TEMPLATES
         missing_templates = []
@@ -127,7 +215,7 @@ class CSMDoctor:
             )
 
         # -----------------------------------------------------------------
-        # 4. 官方平坦化 Helper VI 检查
+        # 5. 官方平坦化 Helper VI 检查
         # -----------------------------------------------------------------
         from core.csm_path_resolver import LabVIEWPathResolver
         helpers = LabVIEWPathResolver.get_helper_paths(lv_app)
@@ -143,7 +231,7 @@ class CSMDoctor:
         )
 
         # -----------------------------------------------------------------
-        # 5. CSM Agent 跳板 VI 检查
+        # 6. CSM Agent 跳板 VI 检查
         # -----------------------------------------------------------------
         agent_vi_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "agent_vi", "csm_agent_bridge_add_state.vi")
@@ -158,7 +246,7 @@ class CSMDoctor:
         )
 
         # -----------------------------------------------------------------
-        # 6. 工作区与备份目录写权限体检
+        # 7. 工作区与备份目录写权限体检
         # -----------------------------------------------------------------
         backup_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backups"))
         writable = False
